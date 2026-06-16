@@ -408,8 +408,15 @@ function monthLabel2(ym) {
 }
 
 async function loadScript(src) {
-  if (document.querySelector(`script[src="${src}"]`)) return;
   return new Promise((res, rej) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing) {
+      // already in DOM — wait for it if not yet loaded
+      if (window.ExcelJS) return res();
+      existing.addEventListener('load', res);
+      existing.addEventListener('error', rej);
+      return;
+    }
     const s = document.createElement('script'); s.src = src;
     s.onload = res; s.onerror = rej; document.head.appendChild(s);
   });
@@ -431,8 +438,10 @@ document.getElementById('export-excel-btn').addEventListener('click', async () =
   const filterMonth = document.getElementById('filter-month').value;
   const status = document.getElementById('export-status');
 
-  status.textContent = 'Preparing Excel…';
-  await loadScript('https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js');
+  try {
+  status.textContent = '⏳ Loading Excel library (first time may take 15–30 seconds)…';
+  await loadScript('https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js');
+  status.textContent = '⏳ Building workbook…';
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'KD Cafe Expense Tracker';
@@ -490,6 +499,7 @@ document.getElementById('export-excel-btn').addEventListener('click', async () =
     totalRow.eachCell(cell => { cell.fill = TOTAL_FILL; cell.border = BORDERS; });
 
     // Pie chart image
+    status.textContent = `⏳ Rendering chart for ${label}…`;
     const catTotals = {};
     rows.forEach(e => {
       const cat = categories[e.category_id];
@@ -555,11 +565,16 @@ document.getElementById('export-excel-btn').addEventListener('click', async () =
 
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  status.textContent = '⏳ Finalizing file…';
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filterMonth ? `KD_Cafe_${monthLabel2(filterMonth).replace(' ', '_')}.xlsx` : 'KD_Cafe_Expenses_All.xlsx';
   a.click();
-  status.textContent = `Downloaded: ${a.download}`;
+  status.textContent = `✅ Downloaded: ${a.download}`;
+  } catch (err) {
+    document.getElementById('export-status').textContent = '❌ Export failed: ' + err.message;
+    console.error(err);
+  }
 });
 
 /* ── Tabs ───────────────────────────────────────────────────────────────── */
