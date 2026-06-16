@@ -202,7 +202,10 @@ function renderExpenseTable() {
       <td>${e.description || ''}</td>
       <td>${fmtMoney(e.amount || 0)}</td>
       <td>${e.receipt_url ? `<a class="receipt-link" href="${e.receipt_url}" target="_blank">View</a>` : '—'}</td>
-      <td><button class="del-btn" data-id="${e.id}">Delete</button></td>`;
+      <td>
+        <button class="edit-btn" data-id="${e.id}">Edit</button>
+        <button class="del-btn" data-id="${e.id}">Delete</button>
+      </td>`;
     tbody.appendChild(tr);
   }
 
@@ -216,6 +219,85 @@ function renderExpenseTable() {
       renderSummary();
       populateMonthFilter();
     });
+  });
+
+  tbody.querySelectorAll('.edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => openEditModal(btn.dataset.id));
+  });
+}
+
+/* ── Edit modal ─────────────────────────────────────────────────────────── */
+function openEditModal(id) {
+  const e = expenses[id];
+  if (!e) return;
+
+  // Remove existing modal if any
+  document.getElementById('edit-modal')?.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'edit-modal';
+  modal.innerHTML = `
+    <div class="modal-backdrop"></div>
+    <div class="modal-box">
+      <h2>Edit Expense</h2>
+      <form id="edit-form">
+        <div class="row">
+          <label>Date<input type="date" name="date" value="${e.date}" required /></label>
+          <label>Category
+            <select name="category_id" id="edit-cat-select" required></select>
+          </label>
+          <label>Amount (₱)<input type="number" name="amount" step="0.01" min="0" value="${e.amount}" required /></label>
+        </div>
+        <div class="row">
+          <label class="grow">Description<input type="text" name="description" value="${e.description || ''}" /></label>
+          <label>Replace Receipt<input type="file" name="receipt" accept="image/*,application/pdf" /></label>
+        </div>
+        <div class="modal-actions">
+          <button type="submit" class="btn-save">Save Changes</button>
+          <button type="button" class="btn-cancel">Cancel</button>
+        </div>
+      </form>
+    </div>`;
+  document.body.appendChild(modal);
+
+  // Populate category select
+  const sel = modal.querySelector('#edit-cat-select');
+  sortedCategories().forEach(({ id: cid, name, group }) => {
+    const opt = document.createElement('option');
+    opt.value = cid; opt.textContent = `${group} › ${name}`;
+    if (cid === e.category_id) opt.selected = true;
+    sel.appendChild(opt);
+  });
+
+  modal.querySelector('.btn-cancel').addEventListener('click', () => modal.remove());
+  modal.querySelector('.modal-backdrop').addEventListener('click', () => modal.remove());
+
+  modal.querySelector('#edit-form').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const fd = new FormData(ev.target);
+    const file = fd.get('receipt');
+    const saveBtn = ev.target.querySelector('.btn-save');
+    saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+
+    let receipt_url = e.receipt_url ?? null;
+    if (file && file.size > 0) receipt_url = await uploadFile(file);
+
+    const updated = {
+      date:        fd.get('date'),
+      category_id: fd.get('category_id'),
+      description: fd.get('description') || '',
+      amount:      parseFloat(fd.get('amount')),
+      receipt_url,
+      created_at:  e.created_at || new Date().toISOString(),
+    };
+
+    await put(DB() + '/expenses/' + id, updated);
+    expenses[id] = { ...updated, id };
+    showToast('Expense updated!');
+    modal.remove();
+    renderExpenseTable();
+    renderSummary();
+    populateMonthFilter();
   });
 }
 

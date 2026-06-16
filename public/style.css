@@ -444,3 +444,13 @@ a.receipt-link:hover {
 .pie-section h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 16px; }
 .pie-wrap { max-width: 520px; margin: 0 auto; }
 .pie-wrap canvas { max-height: 360px; }
+
+/* ── Edit modal ─────────────────────────────────────────────────────────── */
+#edit-modal { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(58,46,42,0.45); }
+.modal-box { position: relative; background: var(--card); border-radius: var(--radius); padding: 32px; width: min(600px, 94vw); box-shadow: 0 12px 40px rgba(58,46,42,0.18); z-index: 1; }
+.modal-box h2 { margin: 0 0 20px; font-size: 20px; color: var(--ink); }
+.modal-actions { display: flex; gap: 12px; margin-top: 20px; }
+.btn-save { background: linear-gradient(135deg, var(--teal), var(--teal-dark)); color: #fff; border: none; border-radius: 10px; padding: 10px 24px; font-weight: 700; cursor: pointer; font-size: 15px; }
+.btn-cancel { background: var(--bg2); color: var(--ink); border: none; border-radius: 10px; padding: 10px 24px; font-weight: 600; cursor: pointer; font-size: 15px; }
+.edit-btn { background: linear-gradient(135deg, var(--purple), #5a45d4); color: #fff; border: none; border-radius: 8px; padding: 5px 14px; font-size: 13px; font-weight: 600; cursor: pointer; margin-right: 4px; }
