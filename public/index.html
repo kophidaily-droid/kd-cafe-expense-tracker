@@ -82,6 +82,17 @@
     <section class="page" data-page="summary" hidden>
       <section class="card">
         <h2>Summary</h2>
+        <div class="summary-controls">
+          <label>Month
+            <select id="summary-month-filter">
+              <option value="">All Months</option>
+            </select>
+          </label>
+        </div>
+        <div class="summary-total-box">
+          <span class="summary-total-label">Total Expenses</span>
+          <span id="summary-total" class="summary-total-amount">₱0.00</span>
+        </div>
         <div class="summary-grid">
           <div>
             <h3>By Month
@@ -102,6 +113,12 @@
               </select>
             </h3>
             <table id="summary-category"><tbody></tbody></table>
+          </div>
+        </div>
+        <div class="pie-section">
+          <h3>Category Allocation</h3>
+          <div class="pie-wrap">
+            <canvas id="category-pie"></canvas>
           </div>
         </div>
       </section>
@@ -141,6 +158,7 @@
   </div>
 
   <div id="toast"></div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>

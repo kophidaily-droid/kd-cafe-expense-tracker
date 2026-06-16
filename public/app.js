@@ -266,9 +266,34 @@ document.getElementById('expense-form').addEventListener('submit', async e => {
 
 /* ── Summary ────────────────────────────────────────────────────────────── */
 let summaryCache = { byMonth: [], byCategory: [] };
+let pieChart = null;
+
+const PIE_COLORS = [
+  '#ff8c42','#2ec4b6','#ffd166','#ff5d8f','#7b61ff',
+  '#4caf50','#ef476f','#118ab2','#06d6a0','#f4a261',
+  '#e76f51','#264653','#a8dadc','#457b9d','#e63946'
+];
+
+function populateSummaryMonthFilter() {
+  const sel = document.getElementById('summary-month-filter');
+  const current = sel.value;
+  const months = [...new Set(Object.values(expenses).map(e => e.date?.slice(0, 7)).filter(Boolean))].sort().reverse();
+  sel.innerHTML = '<option value="">All Months</option>' + months.map(m => `<option value="${m}">${monthLabel(m)}</option>`).join('');
+  sel.value = months.includes(current) ? current : '';
+}
 
 function renderSummary() {
-  const allExp = Object.values(expenses);
+  populateSummaryMonthFilter();
+  applySummarySort();
+}
+
+function applySummarySort() {
+  const filterMonth = document.getElementById('summary-month-filter').value;
+  const allExp = Object.values(expenses).filter(e => !filterMonth || e.date?.slice(0, 7) === filterMonth);
+
+  // total
+  const total = allExp.reduce((s, e) => s + (e.amount || 0), 0);
+  document.getElementById('summary-total').textContent = fmtMoney(total);
 
   // by month
   const monthMap = {};
@@ -288,28 +313,43 @@ function renderSummary() {
   });
   summaryCache.byCategory = Object.values(catMap);
 
-  applySummarySort();
-}
-
-function applySummarySort() {
-  const { byMonth, byCategory } = summaryCache;
-
-  const monthSort  = document.getElementById('sort-month').value;
-  const sortedMonths = [...byMonth].sort((a, b) =>
+  const monthSort = document.getElementById('sort-month').value;
+  const sortedMonths = [...summaryCache.byMonth].sort((a, b) =>
     monthSort === 'date-asc' ? a.month.localeCompare(b.month) : b.month.localeCompare(a.month));
   document.querySelector('#summary-month tbody').innerHTML =
     sortedMonths.map(r => `<tr><td>${monthLabel(r.month)}</td><td>${fmtMoney(r.total)}</td></tr>`).join('');
 
-  const catSort   = document.getElementById('sort-category').value;
-  const sortedCats = [...byCategory].sort((a, b) => {
-    if (catSort === 'alpha-asc')   return a.category_name.localeCompare(b.category_name);
-    if (catSort === 'alpha-desc')  return b.category_name.localeCompare(a.category_name);
-    if (catSort === 'amount-asc')  return a.total - b.total;
+  const catSort = document.getElementById('sort-category').value;
+  const sortedCats = [...summaryCache.byCategory].sort((a, b) => {
+    if (catSort === 'alpha-asc')  return a.category_name.localeCompare(b.category_name);
+    if (catSort === 'alpha-desc') return b.category_name.localeCompare(a.category_name);
+    if (catSort === 'amount-asc') return a.total - b.total;
     return b.total - a.total;
   });
   document.querySelector('#summary-category tbody').innerHTML =
     sortedCats.map(r => `<tr><td>${r.category_name}</td><td>${fmtMoney(r.total)}</td></tr>`).join('');
+
+  // pie chart
+  const pieData = [...summaryCache.byCategory].sort((a, b) => b.total - a.total);
+  if (pieChart) pieChart.destroy();
+  if (pieData.length > 0) {
+    pieChart = new Chart(document.getElementById('category-pie'), {
+      type: 'pie',
+      data: {
+        labels: pieData.map(r => r.category_name),
+        datasets: [{ data: pieData.map(r => r.total), backgroundColor: PIE_COLORS.slice(0, pieData.length), borderWidth: 2 }]
+      },
+      options: {
+        plugins: {
+          legend: { position: 'right', labels: { font: { size: 12 }, padding: 14 } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${fmtMoney(ctx.raw)} (${((ctx.raw/total)*100).toFixed(1)}%)` } }
+        }
+      }
+    });
+  }
 }
+
+document.getElementById('summary-month-filter').addEventListener('change', applySummarySort);
 
 /* ── Export receipts as zip (using JSZip from CDN) ──────────────────────── */
 document.getElementById('export-btn').addEventListener('click', async () => {

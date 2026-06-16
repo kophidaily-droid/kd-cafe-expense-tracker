@@ -409,6 +409,8 @@ a.receipt-link:hover {
   .summary-grid { gap: 16px; }
   .summary-grid > div { min-width: 0; width: 100%; }
   .summary-grid h3 { font-size: 13px; }
+  .pie-wrap { max-width: 100%; }
+  .pie-wrap canvas { max-height: 280px; }
 
   button { width: 100%; }
   .row label button { width: 100%; }
@@ -419,3 +421,26 @@ a.receipt-link:hover {
     margin-bottom: 4px;
   }
 }
+
+/* ── Summary enhancements ───────────────────────────────────────────────── */
+.summary-controls { margin-bottom: 16px; }
+.summary-controls label { font-weight: 600; color: var(--ink); font-size: 14px; }
+.summary-controls select { margin-top: 4px; }
+
+.summary-total-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(135deg, var(--orange), var(--pink));
+  color: #fff;
+  border-radius: 14px;
+  padding: 18px 24px;
+  margin-bottom: 24px;
+}
+.summary-total-label { font-size: 16px; font-weight: 600; opacity: 0.9; }
+.summary-total-amount { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+
+.pie-section { margin-top: 32px; }
+.pie-section h3 { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 16px; }
+.pie-wrap { max-width: 520px; margin: 0 auto; }
+.pie-wrap canvas { max-height: 360px; }
