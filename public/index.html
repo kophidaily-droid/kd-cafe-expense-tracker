@@ -135,6 +135,16 @@
           <label>Category
             <select id="filter-category"><option value="">All</option></select>
           </label>
+          <label>Sort By
+            <select id="expense-sort">
+              <option value="date-desc">Date (newest first)</option>
+              <option value="date-asc">Date (oldest first)</option>
+              <option value="cat-asc">Category (A-Z)</option>
+              <option value="cat-desc">Category (Z-A)</option>
+              <option value="amount-desc">Amount (high-low)</option>
+              <option value="amount-asc">Amount (low-high)</option>
+            </select>
+          </label>
           <label>&nbsp;
             <button type="button" id="export-btn">⬇ Export Receipts</button>
           </label>

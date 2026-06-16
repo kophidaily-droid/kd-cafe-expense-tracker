@@ -184,10 +184,19 @@ async function loadExpenses() {
 function filteredExpenses() {
   const month      = document.getElementById('filter-month').value;
   const categoryId = document.getElementById('filter-category').value;
-  return Object.entries(expenses)
+  const sort       = document.getElementById('expense-sort').value;
+  const list = Object.entries(expenses)
     .map(([id, e]) => ({ id, ...e }))
-    .filter(e => (!month || e.date?.slice(0, 7) === month) && (!categoryId || e.category_id === categoryId))
-    .sort((a, b) => b.date?.localeCompare(a.date) || b.created_at?.localeCompare(a.created_at));
+    .filter(e => (!month || e.date?.slice(0, 7) === month) && (!categoryId || e.category_id === categoryId));
+
+  return list.sort((a, b) => {
+    if (sort === 'date-asc')    return a.date?.localeCompare(b.date);
+    if (sort === 'cat-asc')     return (categories[a.category_id]?.name || '').localeCompare(categories[b.category_id]?.name || '');
+    if (sort === 'cat-desc')    return (categories[b.category_id]?.name || '').localeCompare(categories[a.category_id]?.name || '');
+    if (sort === 'amount-asc')  return (a.amount || 0) - (b.amount || 0);
+    if (sort === 'amount-desc') return (b.amount || 0) - (a.amount || 0);
+    return b.date?.localeCompare(a.date) || b.created_at?.localeCompare(a.created_at); // date-desc default
+  });
 }
 
 function renderExpenseTable() {
@@ -679,6 +688,7 @@ document.getElementById('sort-month').addEventListener('change', applySummarySor
 document.getElementById('sort-category').addEventListener('change', applySummarySort);
 document.getElementById('filter-month').addEventListener('change', renderExpenseTable);
 document.getElementById('filter-category').addEventListener('change', renderExpenseTable);
+document.getElementById('expense-sort').addEventListener('change', renderExpenseTable);
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 (async () => {
