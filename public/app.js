@@ -426,7 +426,14 @@ function renderChartToBase64(config, w = 600, h = 380) {
   return new Promise(resolve => {
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h;
-    const chart = new Chart(canvas, { ...config, options: { ...config.options, animation: false, responsive: false } });
+    // White background plugin
+    const whiteBg = { id: 'whiteBg', beforeDraw: chart => {
+      const ctx = chart.canvas.getContext('2d');
+      ctx.save(); ctx.globalCompositeOperation = 'destination-over';
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }};
+    const chart = new Chart(canvas, { ...config, plugins: [...(config.plugins || []), whiteBg], options: { ...config.options, animation: false, responsive: false } });
     setTimeout(() => {
       resolve(canvas.toDataURL('image/png').split(',')[1]);
       chart.destroy();
