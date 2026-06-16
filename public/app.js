@@ -400,60 +400,166 @@ document.getElementById('export-btn').addEventListener('click', async () => {
 });
 
 /* ── Export Excel ───────────────────────────────────────────────────────── */
+const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function monthLabel2(ym) {
+  const [y, m] = ym.split('-');
+  return `${MN[parseInt(m) - 1]} ${y}`;
+}
+
+async function loadScript(src) {
+  if (document.querySelector(`script[src="${src}"]`)) return;
+  return new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src;
+    s.onload = res; s.onerror = rej; document.head.appendChild(s);
+  });
+}
+
+function renderChartToBase64(config, w = 600, h = 380) {
+  return new Promise(resolve => {
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const chart = new Chart(canvas, { ...config, options: { ...config.options, animation: false, responsive: false } });
+    setTimeout(() => {
+      resolve(canvas.toDataURL('image/png').split(',')[1]);
+      chart.destroy();
+    }, 200);
+  });
+}
+
 document.getElementById('export-excel-btn').addEventListener('click', async () => {
-  const month  = document.getElementById('filter-month').value;
+  const filterMonth = document.getElementById('filter-month').value;
   const status = document.getElementById('export-status');
-  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-  // Load SheetJS on demand
-  if (!window.XLSX) {
-    await new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      s.onload = resolve; s.onerror = reject;
-      document.head.appendChild(s);
+  status.textContent = 'Preparing Excel…';
+  await loadScript('https://cdn.jsdelivr.net/npm/exceljs/dist/exceljs.min.js');
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'KD Cafe Expense Tracker';
+
+  const allMonths = [...new Set(Object.values(expenses).map(e => e.date?.slice(0, 7)).filter(Boolean))].sort();
+  if (!allMonths.length) { status.textContent = 'No expenses to export.'; return; }
+  const monthsToExport = filterMonth ? [filterMonth] : allMonths;
+
+  const HEADER_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF8C42' } };
+  const TOTAL_FILL  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF4E6' } };
+  const BORDER = { style: 'thin', color: { argb: 'FFD4C4B0' } };
+  const BORDERS = { top: BORDER, left: BORDER, bottom: BORDER, right: BORDER };
+
+  const monthlyTotals = {};
+
+  // ── One sheet per month ────────────────────────────────────────────────
+  for (const m of monthsToExport) {
+    const label = monthLabel2(m);
+    const ws = wb.addWorksheet(label);
+    ws.columns = [
+      { header: 'Date',        key: 'date',   width: 14 },
+      { header: 'Group',       key: 'group',  width: 24 },
+      { header: 'Category',    key: 'cat',    width: 26 },
+      { header: 'Description', key: 'desc',   width: 32 },
+      { header: 'Amount (₱)',  key: 'amt',    width: 16 },
+    ];
+
+    // Style header row
+    ws.getRow(1).eachCell(cell => {
+      cell.fill = HEADER_FILL;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = BORDERS;
     });
-  }
+    ws.getRow(1).height = 22;
 
-  const wb = XLSX.utils.book_new();
-
-  const buildSheet = (monthKey) => {
     const rows = Object.values(expenses)
-      .filter(e => e.date?.slice(0, 7) === monthKey)
+      .filter(e => e.date?.slice(0, 7) === m)
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    const data = [['Date', 'Group', 'Category', 'Description', 'Amount (₱)']];
+    rows.forEach((e, i) => {
+      const cat = categories[e.category_id];
+      const r = ws.addRow({ date: e.date, group: cat?.group || '', cat: cat?.name || '—', desc: e.description || '', amt: e.amount || 0 });
+      r.getCell('amt').numFmt = '#,##0.00';
+      r.eachCell(cell => { cell.border = BORDERS; cell.alignment = { vertical: 'middle' }; });
+      if (i % 2 === 1) r.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF9F4' } }; });
+    });
+
+    const total = rows.reduce((s, e) => s + (e.amount || 0), 0);
+    monthlyTotals[m] = total;
+    const totalRow = ws.addRow({ date: '', group: '', cat: '', desc: 'TOTAL', amt: total });
+    totalRow.getCell('desc').font = { bold: true };
+    totalRow.getCell('amt').font = { bold: true };
+    totalRow.getCell('amt').numFmt = '#,##0.00';
+    totalRow.eachCell(cell => { cell.fill = TOTAL_FILL; cell.border = BORDERS; });
+
+    // Pie chart image
+    const catTotals = {};
     rows.forEach(e => {
       const cat = categories[e.category_id];
-      data.push([e.date, cat?.group || '', cat?.name || '—', e.description || '', e.amount || 0]);
+      if (cat) catTotals[cat.name] = (catTotals[cat.name] || 0) + (e.amount || 0);
     });
-    // Total row
-    data.push(['', '', '', 'TOTAL', rows.reduce((s, e) => s + (e.amount || 0), 0)]);
+    const pieLabels = Object.keys(catTotals);
+    const pieData   = Object.values(catTotals);
 
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 24 }, { wch: 30 }, { wch: 14 }];
-    return ws;
-  };
-
-  if (month) {
-    // Single month
-    const [yr, mo] = month.split('-');
-    const label = `${MONTH_NAMES[parseInt(mo) - 1]} ${yr}`;
-    XLSX.utils.book_append_sheet(wb, buildSheet(month), label);
-    XLSX.writeFile(wb, `KD_Cafe_Expenses_${label.replace(' ', '_')}.xlsx`);
-    status.textContent = `Downloaded Excel for ${label}.`;
-  } else {
-    // All months — one sheet each
-    const months = [...new Set(Object.values(expenses).map(e => e.date?.slice(0, 7)).filter(Boolean))].sort();
-    if (!months.length) { status.textContent = 'No expenses to export.'; return; }
-    months.forEach(m => {
-      const [yr, mo] = m.split('-');
-      const label = `${MONTH_NAMES[parseInt(mo) - 1]} ${yr}`;
-      XLSX.utils.book_append_sheet(wb, buildSheet(m), label);
-    });
-    XLSX.writeFile(wb, 'KD_Cafe_Expenses_All.xlsx');
-    status.textContent = `Downloaded Excel with ${months.length} month(s).`;
+    if (pieLabels.length > 0) {
+      const pieBase64 = await renderChartToBase64({
+        type: 'pie',
+        data: { labels: pieLabels, datasets: [{ data: pieData, backgroundColor: PIE_COLORS.slice(0, pieLabels.length), borderWidth: 2 }] },
+        options: { plugins: { title: { display: true, text: `${label} — Category Breakdown`, font: { size: 15 } }, legend: { position: 'right' } } }
+      });
+      const imgId = wb.addImage({ base64: pieBase64, extension: 'png' });
+      ws.addImage(imgId, { tl: { col: 6, row: 0 }, ext: { width: 600, height: 380 } });
+    }
   }
+
+  // ── Summary sheet ──────────────────────────────────────────────────────
+  const sw = wb.addWorksheet('Summary');
+  sw.columns = [
+    { header: 'Month',       key: 'month', width: 18 },
+    { header: 'Total (₱)',   key: 'total', width: 18 },
+  ];
+  sw.getRow(1).eachCell(cell => {
+    cell.fill = HEADER_FILL;
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    cell.alignment = { horizontal: 'center' };
+    cell.border = BORDERS;
+  });
+
+  allMonths.forEach((m, i) => {
+    const r = sw.addRow({ month: monthLabel2(m), total: monthlyTotals[m] || 0 });
+    r.getCell('total').numFmt = '#,##0.00';
+    r.eachCell(cell => { cell.border = BORDERS; });
+    if (i % 2 === 1) r.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF9F4' } }; });
+  });
+
+  const grandTotal = Object.values(monthlyTotals).reduce((s, v) => s + v, 0);
+  const gtRow = sw.addRow({ month: 'GRAND TOTAL', total: grandTotal });
+  gtRow.eachCell(cell => { cell.font = { bold: true }; cell.fill = TOTAL_FILL; cell.border = BORDERS; });
+  gtRow.getCell('total').numFmt = '#,##0.00';
+
+  // Bar chart image
+  const barBase64 = await renderChartToBase64({
+    type: 'bar',
+    data: {
+      labels: allMonths.map(monthLabel2),
+      datasets: [{ label: 'Total Expenses (₱)', data: allMonths.map(m => monthlyTotals[m] || 0),
+        backgroundColor: PIE_COLORS.slice(0, allMonths.length), borderRadius: 6 }]
+    },
+    options: {
+      plugins: { title: { display: true, text: 'Monthly Expenses Comparison', font: { size: 15 } }, legend: { display: false } },
+      scales: { y: { beginAtZero: true, ticks: { callback: v => '₱' + v.toLocaleString() } } }
+    }
+  }, 700, 400);
+  const barImgId = wb.addImage({ base64: barBase64, extension: 'png' });
+  sw.addImage(barImgId, { tl: { col: 3, row: 0 }, ext: { width: 700, height: 400 } });
+
+  // Move Summary sheet to front
+  wb.moveWorksheet('Summary', 0);
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filterMonth ? `KD_Cafe_${monthLabel2(filterMonth).replace(' ', '_')}.xlsx` : 'KD_Cafe_Expenses_All.xlsx';
+  a.click();
+  status.textContent = `Downloaded: ${a.download}`;
 });
 
 /* ── Tabs ───────────────────────────────────────────────────────────────── */
