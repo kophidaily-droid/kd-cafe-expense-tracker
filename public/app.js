@@ -457,6 +457,9 @@ document.getElementById('export-excel-btn').addEventListener('click', async () =
 
   const monthlyTotals = {};
 
+  // ── Summary sheet created first so it appears as the first tab ─────────
+  const sw = wb.addWorksheet('Summary', { properties: { tabColor: { argb: 'FFFF8C42' } } });
+
   // ── One sheet per month ────────────────────────────────────────────────
   for (const m of monthsToExport) {
     const label = monthLabel2(m);
@@ -519,8 +522,7 @@ document.getElementById('export-excel-btn').addEventListener('click', async () =
     }
   }
 
-  // ── Summary sheet ──────────────────────────────────────────────────────
-  const sw = wb.addWorksheet('Summary');
+  // ── Populate Summary sheet ─────────────────────────────────────────────
   sw.columns = [
     { header: 'Month',       key: 'month', width: 18 },
     { header: 'Total (₱)',   key: 'total', width: 18 },
@@ -559,9 +561,6 @@ document.getElementById('export-excel-btn').addEventListener('click', async () =
   }, 700, 400);
   const barImgId = wb.addImage({ base64: barBase64, extension: 'png' });
   sw.addImage(barImgId, { tl: { col: 3, row: 0 }, ext: { width: 700, height: 400 } });
-
-  // Move Summary sheet to front
-  wb.moveWorksheet('Summary', 0);
 
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
