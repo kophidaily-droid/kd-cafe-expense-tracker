@@ -1,237 +1,367 @@
-function showToast(message, type = 'success') {
-  const toast = document.createElement('div');
-  toast.className = 'toast-msg' + (type === 'error' ? ' error' : '');
-  toast.textContent = message;
-  document.getElementById('toast').appendChild(toast);
-  setTimeout(() => {
-    toast.classList.add('fade-out');
-    setTimeout(() => toast.remove(), 400);
-  }, 2500);
+/* ── Firebase REST helpers ──────────────────────────────────────────────── */
+const DB  = () => FIREBASE_DB_URL;
+const get    = url => fetch(url + '.json').then(r => r.json());
+const post   = (url, data) => fetch(url + '.json', { method: 'POST',   body: JSON.stringify(data) }).then(r => r.json());
+const put    = (url, data) => fetch(url + '.json', { method: 'PUT',    body: JSON.stringify(data) }).then(r => r.json());
+const patch  = (url, data) => fetch(url + '.json', { method: 'PATCH',  body: JSON.stringify(data) }).then(r => r.json());
+const del    = url          => fetch(url + '.json', { method: 'DELETE' }).then(r => r.json());
+
+/* ── Upload file to Firebase Storage via REST ───────────────────────────── */
+async function uploadFile(file) {
+  const ext      = file.name.split('.').pop();
+  const filename = `receipts/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const encoded  = encodeURIComponent(filename);
+  const url      = `https://firebasestorage.googleapis.com/v0/b/${FIREBASE_STORAGE_BUCKET}/o?uploadType=media&name=${encoded}`;
+  const res      = await fetch(url, { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+  const data     = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || 'Upload failed');
+  return `https://firebasestorage.googleapis.com/v0/b/${FIREBASE_STORAGE_BUCKET}/o/${encoded}?alt=media`;
 }
 
-let categories = [];
+/* ── Toast ──────────────────────────────────────────────────────────────── */
+function showToast(message, type = 'success') {
+  const t = document.createElement('div');
+  t.className = 'toast-msg' + (type === 'error' ? ' error' : '');
+  t.textContent = message;
+  document.getElementById('toast').appendChild(t);
+  setTimeout(() => { t.classList.add('fade-out'); setTimeout(() => t.remove(), 400); }, 2500);
+}
 
+/* ── Formatters ─────────────────────────────────────────────────────────── */
+function fmtMoney(n) {
+  return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function monthLabel(ym) {
+  const [y, m] = ym.split('-');
+  return new Date(y, m - 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
+}
+
+/* ── Category helpers ───────────────────────────────────────────────────── */
+const GROUPS = ['Supplies & Ingredients', 'Utilities', 'Salary', 'Other OpEx', 'Miscellaneous'];
+
+const SEED_CATEGORIES = [
+  { group: 'Supplies & Ingredients', name: 'Cakes' },
+  { group: 'Supplies & Ingredients', name: 'Coffee Beans' },
+  { group: 'Supplies & Ingredients', name: 'Cups & Lids' },
+  { group: 'Supplies & Ingredients', name: 'Dumbo Eggs' },
+  { group: 'Supplies & Ingredients', name: 'Ice' },
+  { group: 'Supplies & Ingredients', name: 'JPS Meat Supplier' },
+  { group: 'Supplies & Ingredients', name: 'Restaurant Depot' },
+  { group: 'Supplies & Ingredients', name: 'Supplier-IJMCI' },
+  { group: 'Supplies & Ingredients', name: 'Supplier-IZEAL' },
+  { group: 'Supplies & Ingredients', name: 'Supplier-MasterWrap' },
+  { group: 'Supplies & Ingredients', name: 'Tatuts Donuts' },
+  { group: 'Supplies & Ingredients', name: 'Veggies/Fruits' },
+  { group: 'Supplies & Ingredients', name: 'Water- Stream Breeze' },
+  { group: 'Utilities', name: 'Maynilad' },
+  { group: 'Utilities', name: 'Meralco' },
+  { group: 'Utilities', name: 'PLDT' },
+  { group: 'Salary', name: 'Staff Salary' },
+  { group: 'Other OpEx', name: 'Accounting' },
+  { group: 'Other OpEx', name: 'Marketing' },
+  { group: 'Other OpEx', name: 'Permits' },
+  { group: 'Other OpEx', name: 'Tax' },
+  { group: 'Miscellaneous', name: 'Deliveries' },
+  { group: 'Miscellaneous', name: 'Others' },
+];
+
+let categories = {}; // { firebaseKey: { group, name } }
+let expenses   = {}; // { firebaseKey: { date, category_id, description, amount, receipt_url, created_at } }
+
+/* ── Load & seed categories ─────────────────────────────────────────────── */
 async function loadCategories() {
-  categories = await fetch('/api/categories').then(r => r.json());
-  const groups = {};
-  categories.forEach(c => (groups[c.group_name] = groups[c.group_name] || []).push(c));
+  const data = await get(DB() + '/categories');
+  categories = data || {};
 
-  const catSelect = document.getElementById('category-select');
-  const filterCat = document.getElementById('filter-category');
-  catSelect.innerHTML = '';
-  filterCat.innerHTML = '<option value="">All</option>';
-
-  for (const [group, cats] of Object.entries(groups)) {
-    const og1 = document.createElement('optgroup');
-    og1.label = group;
-    const og2 = og1.cloneNode();
-    cats.forEach(c => {
-      const o1 = new Option(c.name, c.id);
-      const o2 = new Option(c.name, c.id);
-      og1.appendChild(o1);
-      og2.appendChild(o2);
-    });
-    catSelect.appendChild(og1);
-    filterCat.appendChild(og2);
+  // Seed if empty
+  if (Object.keys(categories).length === 0) {
+    for (const c of SEED_CATEGORIES) {
+      const res = await post(DB() + '/categories', c);
+      categories[res.name] = c;
+    }
   }
 
+  renderCategorySelects();
   renderCategoryTable();
+}
+
+function sortedCategories() {
+  return Object.entries(categories)
+    .map(([id, c]) => ({ id, ...c }))
+    .sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+}
+
+function renderCategorySelects() {
+  const cats = sortedCategories();
+  const groups = {};
+  cats.forEach(c => (groups[c.group] = groups[c.group] || []).push(c));
+
+  ['category-select', 'filter-category'].forEach((elId, i) => {
+    const el = document.getElementById(elId);
+    el.innerHTML = i === 1 ? '<option value="">All</option>' : '';
+    for (const [group, items] of Object.entries(groups)) {
+      const og = document.createElement('optgroup');
+      og.label = group;
+      items.forEach(c => og.appendChild(new Option(c.name, c.id)));
+      el.appendChild(og);
+    }
+  });
 }
 
 function renderCategoryTable() {
   const tbody = document.querySelector('#category-table tbody');
   tbody.innerHTML = '';
-  for (const c of categories) {
+  for (const c of sortedCategories()) {
     const tr = document.createElement('tr');
     tr.dataset.id = c.id;
     tr.innerHTML = `
       <td>
         <select class="cat-group">
-          ${['Supplies & Ingredients', 'Utilities', 'Salary', 'Other OpEx', 'Miscellaneous']
-            .map(g => `<option value="${g}" ${c.group_name === g ? 'selected' : ''}>${g}</option>`)
-            .join('')}
+          ${GROUPS.map(g => `<option value="${g}" ${c.group === g ? 'selected' : ''}>${g}</option>`).join('')}
         </select>
       </td>
       <td><input type="text" class="cat-name" value="${c.name}" /></td>
       <td>
         <button class="save-cat-btn">Save</button>
         <button class="del-btn del-cat-btn">Delete</button>
-      </td>
-    `;
+      </td>`;
     tbody.appendChild(tr);
   }
 
   tbody.querySelectorAll('.save-cat-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const tr = btn.closest('tr');
-      const id = tr.dataset.id;
-      const name = tr.querySelector('.cat-name').value.trim();
-      const group_name = tr.querySelector('.cat-group').value;
-      const res = await fetch('/api/categories/' + id, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, group_name }),
-      });
-      const data = await res.json();
-      if (!res.ok) return showToast(data.error || 'Failed to update category', 'error');
+      const tr    = btn.closest('tr');
+      const id    = tr.dataset.id;
+      const name  = tr.querySelector('.cat-name').value.trim();
+      const group = tr.querySelector('.cat-group').value;
+      await put(DB() + '/categories/' + id, { group, name });
+      categories[id] = { group, name };
       showToast('Category updated!');
-      loadCategories();
-      loadExpenses();
+      renderCategorySelects();
+      renderCategoryTable();
+      renderExpenseTable();
     });
   });
 
   tbody.querySelectorAll('.del-cat-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const tr = btn.closest('tr');
-      const id = tr.dataset.id;
+      const id = btn.closest('tr').dataset.id;
+      const inUse = Object.values(expenses).some(e => e.category_id === id);
+      if (inUse) return showToast('Cannot delete: expenses use this category.', 'error');
       if (!confirm('Delete this category?')) return;
-      const res = await fetch('/api/categories/' + id, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) return showToast(data.error || 'Failed to delete category', 'error');
+      await del(DB() + '/categories/' + id);
+      delete categories[id];
       showToast('Category deleted!');
-      loadCategories();
+      renderCategorySelects();
+      renderCategoryTable();
     });
   });
 }
 
-document.getElementById('add-category-form').addEventListener('submit', async (e) => {
+/* ── Add category form ──────────────────────────────────────────────────── */
+document.getElementById('add-category-form').addEventListener('submit', async e => {
   e.preventDefault();
-  const form = e.target;
-  const fd = new FormData(form);
-  const res = await fetch('/api/categories', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: fd.get('name').trim(), group_name: fd.get('group_name') }),
-  });
-  const data = await res.json();
-  if (!res.ok) return showToast(data.error || 'Failed to add category', 'error');
+  const fd   = new FormData(e.target);
+  const name = fd.get('name').trim();
+  const group = fd.get('group_name');
+  const exists = Object.values(categories).some(c => c.name.toLowerCase() === name.toLowerCase());
+  if (exists) return showToast('A category with that name already exists.', 'error');
+  const res = await post(DB() + '/categories', { group, name });
+  categories[res.name] = { group, name };
   showToast('Category added!');
-  form.reset();
-  loadCategories();
+  e.target.reset();
+  renderCategorySelects();
+  renderCategoryTable();
 });
 
-function fmtMoney(n) {
-  return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function monthLabel(ym) {
-  const [y, m] = ym.split('-');
-  return new Date(y, m - 1).toLocaleString('en-US', { month: 'short', year: 'numeric' });
-}
-
+/* ── Load expenses ──────────────────────────────────────────────────────── */
 async function loadExpenses() {
-  const month = document.getElementById('filter-month').value;
-  const category_id = document.getElementById('filter-category').value;
-  const params = new URLSearchParams();
-  if (month) params.set('month', month);
-  if (category_id) params.set('category_id', category_id);
+  const data = await get(DB() + '/expenses');
+  expenses = data || {};
+  renderExpenseTable();
+  renderSummary();
+  populateMonthFilter();
+}
 
-  const expenses = await fetch('/api/expenses?' + params).then(r => r.json());
+function filteredExpenses() {
+  const month      = document.getElementById('filter-month').value;
+  const categoryId = document.getElementById('filter-category').value;
+  return Object.entries(expenses)
+    .map(([id, e]) => ({ id, ...e }))
+    .filter(e => (!month || e.date?.slice(0, 7) === month) && (!categoryId || e.category_id === categoryId))
+    .sort((a, b) => b.date?.localeCompare(a.date) || b.created_at?.localeCompare(a.created_at));
+}
+
+function renderExpenseTable() {
   const tbody = document.querySelector('#expense-table tbody');
   tbody.innerHTML = '';
-
-  const monthSet = new Set();
-  expenses.forEach(e => monthSet.add(e.date.slice(0, 7)));
-
-  for (const e of expenses) {
-    const tr = document.createElement('tr');
+  for (const e of filteredExpenses()) {
+    const cat = categories[e.category_id];
+    const tr  = document.createElement('tr');
     tr.innerHTML = `
-      <td>${e.date}</td>
-      <td>${e.category_name}</td>
+      <td>${e.date || ''}</td>
+      <td>${cat ? cat.name : '—'}</td>
       <td>${e.description || ''}</td>
-      <td>${fmtMoney(e.amount)}</td>
-      <td>${e.receipt_filename ? `<a class="receipt-link" href="/uploads/${e.receipt_filename}" target="_blank">View</a>` : '-'}</td>
-      <td><button class="del-btn" data-id="${e.id}">Delete</button></td>
-    `;
+      <td>${fmtMoney(e.amount || 0)}</td>
+      <td>${e.receipt_url ? `<a class="receipt-link" href="${e.receipt_url}" target="_blank">View</a>` : '—'}</td>
+      <td><button class="del-btn" data-id="${e.id}">Delete</button></td>`;
     tbody.appendChild(tr);
   }
 
   tbody.querySelectorAll('.del-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!confirm('Delete this expense?')) return;
-      const res = await fetch('/api/expenses/' + btn.dataset.id, { method: 'DELETE' });
-      if (!res.ok) return showToast('Failed to delete expense', 'error');
+      await del(DB() + '/expenses/' + btn.dataset.id);
+      delete expenses[btn.dataset.id];
       showToast('Expense deleted!');
-      loadExpenses();
-      loadSummary();
+      renderExpenseTable();
+      renderSummary();
+      populateMonthFilter();
     });
   });
+}
 
-  // populate month filter (preserve selection)
-  if (!month) {
-    const filterMonth = document.getElementById('filter-month');
-    const current = filterMonth.value;
-    const all = await fetch('/api/expenses').then(r => r.json());
-    const months = [...new Set(all.map(e => e.date.slice(0, 7)))].sort().reverse();
-    filterMonth.innerHTML = '<option value="">All</option>' +
-      months.map(m => `<option value="${m}">${monthLabel(m)}</option>`).join('');
-    filterMonth.value = current;
+function populateMonthFilter() {
+  const sel     = document.getElementById('filter-month');
+  const current = sel.value;
+  const months  = [...new Set(Object.values(expenses).map(e => e.date?.slice(0, 7)).filter(Boolean))].sort().reverse();
+  sel.innerHTML = '<option value="">All</option>' + months.map(m => `<option value="${m}">${monthLabel(m)}</option>`).join('');
+  sel.value = current;
+}
+
+/* ── Add expense form ───────────────────────────────────────────────────── */
+document.getElementById('expense-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fd          = new FormData(e.target);
+  const file        = fd.get('receipt');
+  const submitBtn   = e.target.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Saving…';
+
+  try {
+    let receipt_url = null;
+    if (file && file.size > 0) receipt_url = await uploadFile(file);
+
+    const expense = {
+      date:        fd.get('date'),
+      category_id: fd.get('category_id'),
+      description: fd.get('description') || '',
+      amount:      parseFloat(fd.get('amount')),
+      receipt_url,
+      created_at:  new Date().toISOString(),
+    };
+
+    const res = await post(DB() + '/expenses', expense);
+    expenses[res.name] = expense;
+    showToast('Successfully added!');
+    e.target.reset();
+    renderExpenseTable();
+    renderSummary();
+    populateMonthFilter();
+  } catch (err) {
+    showToast(err.message || 'Failed to add expense', 'error');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Add Expense';
   }
-}
+});
 
-let summaryData = { byMonth: [], byCategory: [] };
-
-async function loadSummary() {
-  summaryData = await fetch('/api/summary').then(r => r.json());
-  renderSummary();
-}
+/* ── Summary ────────────────────────────────────────────────────────────── */
+let summaryCache = { byMonth: [], byCategory: [] };
 
 function renderSummary() {
-  const { byMonth, byCategory } = summaryData;
+  const allExp = Object.values(expenses);
 
-  const monthSort = document.getElementById('sort-month').value;
-  const sortedMonths = [...byMonth].sort((a, b) =>
-    monthSort === 'date-asc' ? a.month.localeCompare(b.month) : b.month.localeCompare(a.month)
-  );
-  const mTbody = document.querySelector('#summary-month tbody');
-  mTbody.innerHTML = sortedMonths.map(r => `<tr><td>${monthLabel(r.month)}</td><td>${fmtMoney(r.total)}</td></tr>`).join('');
-
-  const catSort = document.getElementById('sort-category').value;
-  const sortedCats = [...byCategory].sort((a, b) => {
-    switch (catSort) {
-      case 'alpha-asc': return a.category_name.localeCompare(b.category_name);
-      case 'alpha-desc': return b.category_name.localeCompare(a.category_name);
-      case 'amount-asc': return a.total - b.total;
-      case 'amount-desc': default: return b.total - a.total;
-    }
+  // by month
+  const monthMap = {};
+  allExp.forEach(e => {
+    const m = e.date?.slice(0, 7);
+    if (m) monthMap[m] = (monthMap[m] || 0) + (e.amount || 0);
   });
-  const cTbody = document.querySelector('#summary-category tbody');
-  cTbody.innerHTML = sortedCats.map(r => `<tr><td>${r.category_name}</td><td>${fmtMoney(r.total)}</td></tr>`).join('');
+  summaryCache.byMonth = Object.entries(monthMap).map(([month, total]) => ({ month, total }));
+
+  // by category
+  const catMap = {};
+  allExp.forEach(e => {
+    const cat = categories[e.category_id];
+    if (!cat) return;
+    if (!catMap[e.category_id]) catMap[e.category_id] = { category_name: cat.name, group_name: cat.group, total: 0 };
+    catMap[e.category_id].total += e.amount || 0;
+  });
+  summaryCache.byCategory = Object.values(catMap);
+
+  applySummarySort();
 }
 
-document.getElementById('expense-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const fd = new FormData(form);
-  const res = await fetch('/api/expenses', { method: 'POST', body: fd });
-  if (res.ok) {
-    showToast('Successfully added!');
-    form.reset();
-    loadExpenses();
-    loadSummary();
-  } else {
-    showToast('Failed to add expense', 'error');
-  }
-});
+function applySummarySort() {
+  const { byMonth, byCategory } = summaryCache;
 
-document.getElementById('export-drive-btn').addEventListener('click', () => {
+  const monthSort  = document.getElementById('sort-month').value;
+  const sortedMonths = [...byMonth].sort((a, b) =>
+    monthSort === 'date-asc' ? a.month.localeCompare(b.month) : b.month.localeCompare(a.month));
+  document.querySelector('#summary-month tbody').innerHTML =
+    sortedMonths.map(r => `<tr><td>${monthLabel(r.month)}</td><td>${fmtMoney(r.total)}</td></tr>`).join('');
+
+  const catSort   = document.getElementById('sort-category').value;
+  const sortedCats = [...byCategory].sort((a, b) => {
+    if (catSort === 'alpha-asc')   return a.category_name.localeCompare(b.category_name);
+    if (catSort === 'alpha-desc')  return b.category_name.localeCompare(a.category_name);
+    if (catSort === 'amount-asc')  return a.total - b.total;
+    return b.total - a.total;
+  });
+  document.querySelector('#summary-category tbody').innerHTML =
+    sortedCats.map(r => `<tr><td>${r.category_name}</td><td>${fmtMoney(r.total)}</td></tr>`).join('');
+}
+
+/* ── Export receipts as zip (using JSZip from CDN) ──────────────────────── */
+document.getElementById('export-btn').addEventListener('click', async () => {
   const month  = document.getElementById('filter-month').value;
   const status = document.getElementById('export-status');
-  if (!month) {
-    status.textContent = 'Select a month first to export its receipts.';
-    return;
+  if (!month) { status.textContent = 'Select a month first to export receipts.'; return; }
+
+  const yr = month.split('-')[0];
+  const mo = parseInt(month.split('-')[1]);
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const folderName = `${monthNames[mo - 1]} ${yr}`;
+
+  const rows = Object.values(expenses).filter(e => e.date?.slice(0, 7) === month && e.receipt_url);
+  if (!rows.length) { status.textContent = `No receipts found for ${folderName}.`; return; }
+
+  status.textContent = `Preparing ${rows.length} file(s)…`;
+
+  // Load JSZip from CDN on demand
+  if (!window.JSZip) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
   }
-  status.textContent = 'Preparing zip download…';
-  window.location.href = '/api/export-month?month=' + month;
-  setTimeout(() => { status.textContent = ''; }, 3000);
+
+  const zip      = new JSZip();
+  const counters = {};
+  for (const e of rows) {
+    try {
+      const cat = categories[e.category_id]?.name || 'Unknown';
+      const key = cat.replace(/[^A-Za-z0-9]/g, '_');
+      counters[key] = (counters[key] || 0) + 1;
+      const ext  = e.receipt_url.split('?')[0].split('.').pop();
+      const name = `${folderName}/${key}_${counters[key]}.${ext}`;
+      const blob = await fetch(e.receipt_url).then(r => r.blob());
+      zip.file(name, blob);
+    } catch (_) {}
+  }
+
+  const content = await zip.generateAsync({ type: 'blob' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(content);
+  a.download = `${folderName.replace(' ', '_')}_receipts.zip`;
+  a.click();
+  status.textContent = `Downloaded ${Object.values(counters).reduce((a,b)=>a+b,0)} file(s) as ${a.download}.`;
 });
 
-document.getElementById('sort-month').addEventListener('change', renderSummary);
-document.getElementById('sort-category').addEventListener('change', renderSummary);
-
-document.getElementById('filter-month').addEventListener('change', loadExpenses);
-document.getElementById('filter-category').addEventListener('change', loadExpenses);
-
+/* ── Tabs ───────────────────────────────────────────────────────────────── */
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -241,8 +371,13 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-(async function init() {
+document.getElementById('sort-month').addEventListener('change', applySummarySort);
+document.getElementById('sort-category').addEventListener('change', applySummarySort);
+document.getElementById('filter-month').addEventListener('change', renderExpenseTable);
+document.getElementById('filter-category').addEventListener('change', renderExpenseTable);
+
+/* ── Init ───────────────────────────────────────────────────────────────── */
+(async () => {
   await loadCategories();
   await loadExpenses();
-  await loadSummary();
 })();
