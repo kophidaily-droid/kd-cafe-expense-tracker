@@ -399,6 +399,63 @@ document.getElementById('export-btn').addEventListener('click', async () => {
   status.textContent = `Downloaded ${Object.values(counters).reduce((a,b)=>a+b,0)} file(s) as ${a.download}.`;
 });
 
+/* ── Export Excel ───────────────────────────────────────────────────────── */
+document.getElementById('export-excel-btn').addEventListener('click', async () => {
+  const month  = document.getElementById('filter-month').value;
+  const status = document.getElementById('export-status');
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  // Load SheetJS on demand
+  if (!window.XLSX) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  const buildSheet = (monthKey) => {
+    const rows = Object.values(expenses)
+      .filter(e => e.date?.slice(0, 7) === monthKey)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const data = [['Date', 'Group', 'Category', 'Description', 'Amount (₱)']];
+    rows.forEach(e => {
+      const cat = categories[e.category_id];
+      data.push([e.date, cat?.group || '', cat?.name || '—', e.description || '', e.amount || 0]);
+    });
+    // Total row
+    data.push(['', '', '', 'TOTAL', rows.reduce((s, e) => s + (e.amount || 0), 0)]);
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 24 }, { wch: 30 }, { wch: 14 }];
+    return ws;
+  };
+
+  if (month) {
+    // Single month
+    const [yr, mo] = month.split('-');
+    const label = `${MONTH_NAMES[parseInt(mo) - 1]} ${yr}`;
+    XLSX.utils.book_append_sheet(wb, buildSheet(month), label);
+    XLSX.writeFile(wb, `KD_Cafe_Expenses_${label.replace(' ', '_')}.xlsx`);
+    status.textContent = `Downloaded Excel for ${label}.`;
+  } else {
+    // All months — one sheet each
+    const months = [...new Set(Object.values(expenses).map(e => e.date?.slice(0, 7)).filter(Boolean))].sort();
+    if (!months.length) { status.textContent = 'No expenses to export.'; return; }
+    months.forEach(m => {
+      const [yr, mo] = m.split('-');
+      const label = `${MONTH_NAMES[parseInt(mo) - 1]} ${yr}`;
+      XLSX.utils.book_append_sheet(wb, buildSheet(m), label);
+    });
+    XLSX.writeFile(wb, 'KD_Cafe_Expenses_All.xlsx');
+    status.textContent = `Downloaded Excel with ${months.length} month(s).`;
+  }
+});
+
 /* ── Tabs ───────────────────────────────────────────────────────────────── */
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
