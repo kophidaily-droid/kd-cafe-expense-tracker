@@ -6,16 +6,14 @@ const put    = (url, data) => fetch(url + '.json', { method: 'PUT',    body: JSO
 const patch  = (url, data) => fetch(url + '.json', { method: 'PATCH',  body: JSON.stringify(data) }).then(r => r.json());
 const del    = url          => fetch(url + '.json', { method: 'DELETE' }).then(r => r.json());
 
-/* ── Upload file to Firebase Storage via REST ───────────────────────────── */
+/* ── Convert receipt to base64 data URL (stored in DB, no Storage needed) ── */
 async function uploadFile(file) {
-  const ext      = file.name.split('.').pop();
-  const filename = `receipts/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const encoded  = encodeURIComponent(filename);
-  const url      = `https://firebasestorage.googleapis.com/v0/b/${FIREBASE_STORAGE_BUCKET}/o?uploadType=media&name=${encoded}`;
-  const res      = await fetch(url, { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
-  const data     = await res.json();
-  if (!res.ok) throw new Error(data.error?.message || 'Upload failed');
-  return `https://firebasestorage.googleapis.com/v0/b/${FIREBASE_STORAGE_BUCKET}/o/${encoded}?alt=media`;
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
 }
 
 /* ── Toast ──────────────────────────────────────────────────────────────── */
