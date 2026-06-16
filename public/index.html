@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>KD Cafe Expense Tracker</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>☕ KD Cafe Expense Tracker</h1>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab-btn active" data-page="add">Add Expense</button>
+      <button class="tab-btn" data-page="categories">Categories</button>
+      <button class="tab-btn" data-page="summary">Summary</button>
+      <button class="tab-btn" data-page="expenses">Expenses</button>
+    </nav>
+
+    <section class="page" data-page="add">
+    <section class="card">
+      <h2>Add Expense</h2>
+      <form id="expense-form">
+        <div class="row">
+          <label>Date
+            <input type="date" name="date" required />
+          </label>
+          <label>Category
+            <select name="category_id" id="category-select" required></select>
+          </label>
+          <label>Amount (₱)
+            <input type="number" name="amount" step="0.01" min="0" required />
+          </label>
+        </div>
+        <div class="row">
+          <label class="grow">Description
+            <input type="text" name="description" placeholder="Optional notes" />
+          </label>
+          <label>Receipt / Proof
+            <input type="file" name="receipt" accept="image/*,application/pdf" />
+          </label>
+        </div>
+        <button type="submit">Add Expense</button>
+      </form>
+    </section>
+    </section>
+
+    <section class="page" data-page="categories" hidden>
+    <section class="card">
+      <h2>Manage Categories</h2>
+      <form id="add-category-form" class="row">
+        <label>Group
+          <select name="group_name">
+            <option value="Supplies & Ingredients">Supplies & Ingredients</option>
+            <option value="Utilities">Utilities</option>
+            <option value="Salary">Salary</option>
+            <option value="Other OpEx">Other OpEx</option>
+            <option value="Miscellaneous">Miscellaneous</option>
+          </select>
+        </label>
+        <label class="grow">New Category Name
+          <input type="text" name="name" placeholder="e.g. Napkins" required />
+        </label>
+        <label>&nbsp;
+          <button type="submit">Add Category</button>
+        </label>
+      </form>
+      <table id="category-table">
+        <thead>
+          <tr><th>Group</th><th>Name</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    </section>
+
+    <section class="page" data-page="summary" hidden>
+    <section class="card">
+      <h2>Summary</h2>
+      <div class="summary-grid">
+        <div>
+          <h3>By Month
+            <select id="sort-month" class="sort-select">
+              <option value="date-desc">Date (newest first)</option>
+              <option value="date-asc">Date (oldest first)</option>
+            </select>
+          </h3>
+          <table id="summary-month"><tbody></tbody></table>
+        </div>
+        <div>
+          <h3>By Category
+            <select id="sort-category" class="sort-select">
+              <option value="alpha-asc">Alphabetical (A-Z)</option>
+              <option value="alpha-desc">Alphabetical (Z-A)</option>
+              <option value="amount-desc">Amount (high-low)</option>
+              <option value="amount-asc">Amount (low-high)</option>
+            </select>
+          </h3>
+          <table id="summary-category"><tbody></tbody></table>
+        </div>
+      </div>
+    </section>
+    </section>
+
+    <section class="page" data-page="expenses" hidden>
+    <section class="card">
+      <h2>Expenses</h2>
+      <div class="filters">
+        <label>Month
+          <select id="filter-month"><option value="">All</option></select>
+        </label>
+        <label>Category
+          <select id="filter-category"><option value="">All</option></select>
+        </label>
+        <label>&nbsp;
+          <button type="button" id="export-drive-btn">Export to Downloads</button>
+        </label>
+      </div>
+      <div id="export-status"></div>
+      <table id="expense-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Category</th>
+            <th>Description</th>
+            <th>Amount</th>
+            <th>Receipt</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+    </section>
+  </div>
+  <div id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

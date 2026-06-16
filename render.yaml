@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: kd-cafe-expense-tracker
+    env: python
+    buildCommand: echo "No build step needed"
+    startCommand: python server/server.py
+    envVars:
+      - key: DATA_DIR
+        value: /var/data
+      - key: PORT
+        value: 10000
+    disk:
+      name: cafe-data
+      mountPath: /var/data
+      sizeGB: 1
